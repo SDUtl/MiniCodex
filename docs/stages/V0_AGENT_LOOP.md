@@ -6,7 +6,7 @@
 - V0.0：已确认
 - V0.1：已确认
 - V0.2：已确认
-- V0.3：实现与验证完成，等待学习者确认
+- V0.3：已确认；可重复运行的 DeepSeek Smoke Test 已补充
 - V0.4：尚未开始
 
 ## 1. 阶段目标
@@ -86,7 +86,7 @@ tools.py  定义并执行 V0 的两个工具
 
 ### V0.1：单次 LLM 调用——建立非 Agent 基线
 
-**实现状态：完成，等待学习确认**
+**实现状态：已确认**
 
 验证结果：
 
@@ -118,7 +118,7 @@ tools.py  定义并执行 V0 的两个工具
 
 ### V0.2：`read_file`——区分工具契约与工具执行
 
-**实现状态：完成，等待学习确认**
+**实现状态：已确认**
 
 验证结果：
 
@@ -151,7 +151,7 @@ tools.py  定义并执行 V0 的两个工具
 
 ### V0.3：单次 Tool Calling 往返——先不用循环
 
-**实现状态：完成，等待学习确认**
+**实现状态：已确认**
 
 验证结果：
 
@@ -163,6 +163,19 @@ tools.py  定义并执行 V0 的两个工具
 - 故意使用错误 `tool_call_id` 时，DeepSeek 返回 HTTP 400；
 - 为支持确定性的 `required` / `none` 实验，本阶段显式关闭 DeepSeek Thinking Mode；
 - 当前流程固定调用两次模型，没有 `while` 循环。
+
+可重复运行的真实 API 实验保存在 `examples/v0_3_deepseek_smoke.py`：
+
+```bash
+set -a
+source .env
+set +a
+PYTHONPATH=src .venv/bin/python examples/v0_3_deepseek_smoke.py
+```
+
+它复用正式的 `run_read_file_round_trip`，只在外层观察并打印两次请求和响应。
+因此这里看到的是 DeepSeek 的真实 Tool Call，而不是脚本伪造的 Tool Call。
+自动化测试则注入 Fake Client，以便稳定验证输出结构且不消耗 API 额度。
 
 **本次只做**
 

@@ -6,7 +6,7 @@ Mini Codex 是一个以学习 Harness Engineering 为第一目标的 Coding Agen
 
 ## 当前阶段
 
-当前处于 **V0：最小 Agent Loop**。V0.1、V0.2 已确认；V0.3 固定两次调用的 Tool Calling 往返已经实现并验证，正在等待学习确认。V0.4 尚未开始。
+当前处于 **V0：最小 Agent Loop**。V0.1、V0.2、V0.3 已确认；V0.3 的真实 DeepSeek Smoke Test 已保存为可重复运行的脚本。V0.4 尚未开始。
 
 - [长期项目章程](docs/PROJECT_CHARTER.md)
 - [V0 设计与学习检查点](docs/stages/V0_AGENT_LOOP.md)
@@ -15,4 +15,24 @@ Mini Codex 是一个以学习 Harness Engineering 为第一目标的 Coding Agen
 
 ```text
 学习价值 > 开发速度 > 功能数量
+```
+
+## V0.3 DeepSeek Smoke Test
+
+先把 DeepSeek 密钥配置在本地 `.env`，再运行：
+
+```bash
+set -a
+source .env
+set +a
+PYTHONPATH=src .venv/bin/python examples/v0_3_deepseek_smoke.py
+```
+
+这个脚本会真实调用 DeepSeek 两次，并打印第一次模型生成的 Tool Call、
+`tool_call_id`、Harness 回填的文件内容和第二次模型生成的最终回答。脚本不会打印密钥。
+
+对应的自动化测试使用 Fake Client，不消耗 API 额度：
+
+```bash
+PYTHONPATH=src .venv/bin/python -m unittest -v tests/test_v0_3_smoke.py
 ```
