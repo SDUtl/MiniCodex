@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from mini_codex.tools import READ_FILE_TOOL, read_file
+from mini_codex.tools import READ_FILE_TOOL, SHELL_TOOL, read_file, shell
 
 
 def run_read_file_round_trip(
@@ -60,7 +60,7 @@ def run_agent_loop(
         response = client.chat.completions.create(
             model=model,
             messages=messages,
-            tools=[READ_FILE_TOOL],
+            tools=[READ_FILE_TOOL, SHELL_TOOL],
             tool_choice="auto",
             extra_body={"thinking": {"type": "disabled"}},
         )
@@ -76,11 +76,14 @@ def run_agent_loop(
 
         for tool_call in tool_calls:
             # 模型只负责提出请求；Harness 负责校验并执行真正的 Python 函数。
-            if tool_call.function.name != "read_file":
+            arguments = json.loads(tool_call.function.arguments)
+            if tool_call.function.name == "read_file":
+                tool_result = read_file(repository, arguments["path"])
+            elif tool_call.function.name == "shell":
+                tool_result = shell(repository, arguments.get("command"))
+            else:
                 raise ValueError(f"Unsupported tool: {tool_call.function.name}")
 
-            arguments = json.loads(tool_call.function.arguments)
-            tool_result = read_file(repository, arguments["path"])
             messages.append(
                 {
                     "role": "tool",

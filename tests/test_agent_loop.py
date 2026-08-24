@@ -1,10 +1,11 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
 from mini_codex import agent
-from mini_codex.tools import READ_FILE_TOOL
+from mini_codex.tools import READ_FILE_TOOL, SHELL_TOOL
 from tests.test_agent import FakeClient, model_response
 
 
@@ -15,6 +16,22 @@ def read_file_call_message(path, call_id):
         function=SimpleNamespace(
             name="read_file",
             arguments=f'{{"path": "{path}"}}',
+        ),
+    )
+    return SimpleNamespace(
+        role="assistant",
+        content=None,
+        tool_calls=[tool_call],
+    )
+
+
+def shell_call_message(command, call_id):
+    tool_call = SimpleNamespace(
+        id=call_id,
+        type="function",
+        function=SimpleNamespace(
+            name="shell",
+            arguments=json.dumps({"command": command}),
         ),
     )
     return SimpleNamespace(
@@ -49,7 +66,7 @@ class AgentLoopTests(unittest.TestCase):
                 {
                     "model": "test-model",
                     "messages": [{"role": "user", "content": "Answer directly"}],
-                    "tools": [READ_FILE_TOOL],
+                    "tools": [READ_FILE_TOOL, SHELL_TOOL],
                     "tool_choice": "auto",
                     "extra_body": {"thinking": {"type": "disabled"}},
                 }
@@ -201,6 +218,60 @@ class AgentLoopTests(unittest.TestCase):
                     model="test-model",
                     client=client,
                 )
+
+    def test_returns_shell_failure_to_model_and_continues(self):
+        shell_call = shell_call_message(
+            "printf 'problem' >&2; exit 7",
+            "call_shell",
+        )
+        final_message = SimpleNamespace(
+            content="The command failed with exit code 7.",
+            tool_calls=None,
+        )
+        client = FakeClient(
+            [model_response(shell_call), model_response(final_message)]
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            repository = Path(directory)
+            try:
+                result = agent.run_agent_loop(
+                    "Run a failing command and explain it",
+                    repository,
+                    model="test-model",
+                    client=client,
+                )
+            except ValueError as error:
+                self.fail(f"shell should be a supported tool: {error}")
+
+        self.assertEqual(result, "The command failed with exit code 7.")
+        self.assertEqual(
+            client.chat.completions.requests[0]["tools"],
+            [READ_FILE_TOOL, SHELL_TOOL],
+        )
+        self.assertEqual(
+            client.chat.completions.requests[1]["messages"],
+            [
+                {
+                    "role": "user",
+                    "content": "Run a failing command and explain it",
+                },
+                shell_call,
+                {
+                    "role": "tool",
+                    "tool_call_id": "call_shell",
+                    "content": json.dumps(
+                        {
+                            "exit_code": 7,
+                            "stdout": "",
+                            "stderr": "problem",
+                            "timed_out": False,
+                        },
+                        ensure_ascii=False,
+                    ),
+                },
+            ],
+        )
 
 
 if __name__ == "__main__":

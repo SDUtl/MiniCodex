@@ -1,4 +1,5 @@
 import importlib
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -30,6 +31,127 @@ class ReadFileSchemaTests(unittest.TestCase):
                         "additionalProperties": False,
                     },
                 },
+            },
+        )
+
+
+class ShellSchemaTests(unittest.TestCase):
+    def test_describes_shell_and_its_command_parameter(self):
+        tools = importlib.import_module("mini_codex.tools")
+        self.assertTrue(
+            hasattr(tools, "SHELL_TOOL"),
+            "mini_codex.tools.SHELL_TOOL does not exist yet",
+        )
+        self.assertEqual(
+            tools.SHELL_TOOL,
+            {
+                "type": "function",
+                "function": {
+                    "name": "shell",
+                    "description": "Run a shell command in the repository.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "command": {
+                                "type": "string",
+                                "description": "Shell command to execute.",
+                            }
+                        },
+                        "required": ["command"],
+                        "additionalProperties": False,
+                    },
+                },
+            },
+        )
+
+
+class ShellTests(unittest.TestCase):
+    def test_runs_command_in_repository_and_returns_json(self):
+        tools = importlib.import_module("mini_codex.tools")
+        self.assertTrue(
+            hasattr(tools, "shell"),
+            "mini_codex.tools.shell does not exist yet",
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            repository = Path(directory)
+            result = json.loads(tools.shell(repository, "pwd"))
+
+        self.assertEqual(
+            result,
+            {
+                "exit_code": 0,
+                "stdout": f"{repository.resolve()}\n",
+                "stderr": "",
+                "timed_out": False,
+            },
+        )
+
+    def test_returns_nonzero_exit_as_observation(self):
+        tools = importlib.import_module("mini_codex.tools")
+
+        with tempfile.TemporaryDirectory() as directory:
+            repository = Path(directory)
+            try:
+                result = json.loads(
+                    tools.shell(
+                        repository,
+                        "printf 'output'; printf 'problem' >&2; exit 7",
+                    )
+                )
+            except Exception as error:
+                self.fail(f"shell failure should be an observation: {error}")
+
+        self.assertEqual(
+            result,
+            {
+                "exit_code": 7,
+                "stdout": "output",
+                "stderr": "problem",
+                "timed_out": False,
+            },
+        )
+
+    def test_returns_invalid_command_as_observation(self):
+        tools = importlib.import_module("mini_codex.tools")
+        expected = {
+            "exit_code": None,
+            "stdout": "",
+            "stderr": "Error: command must be a non-empty string",
+            "timed_out": False,
+        }
+
+        with tempfile.TemporaryDirectory() as directory:
+            repository = Path(directory)
+            for command in (None, 42, "", "   "):
+                with self.subTest(command=command):
+                    try:
+                        result = json.loads(tools.shell(repository, command))
+                    except Exception as error:
+                        self.fail(f"invalid command should be an observation: {error}")
+
+                    self.assertEqual(result, expected)
+
+    def test_returns_timeout_as_observation(self):
+        tools = importlib.import_module("mini_codex.tools")
+
+        with tempfile.TemporaryDirectory() as directory:
+            repository = Path(directory)
+            result = json.loads(
+                tools.shell(
+                    repository,
+                    "printf 'before timeout'; sleep 0.2",
+                    timeout_seconds=0.02,
+                )
+            )
+
+        self.assertEqual(
+            result,
+            {
+                "exit_code": None,
+                "stdout": "before timeout",
+                "stderr": "",
+                "timed_out": True,
             },
         )
 

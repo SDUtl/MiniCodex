@@ -8,7 +8,7 @@
 - V0.2：已确认
 - V0.3：已确认；可重复运行的 DeepSeek Smoke Test 已补充
 - V0.4：已确认
-- V0.5：设计已确认，等待书面设计审阅
+- V0.5：实现与验证完成，等待学习者确认
 
 ## 1. 阶段目标
 
@@ -336,7 +336,7 @@ MODEL CALL 3 → observe V0 document → final answer
 
 ### V0.5：`shell` 与失败观察
 
-**设计状态：已确认，代码尚未实现**
+**实现状态：完成，等待学习确认**
 
 #### Why
 
@@ -467,6 +467,25 @@ V0.5 的 `shell` 使用宿主机环境执行字符串命令，没有 Sandbox、P
 - Agent Loop 同时向模型提供 `read_file` 与 `shell`；
 - 假模型先收到失败 Shell Observation，再发出新动作并最终回答；
 - V0.4 的 `read_file` 多轮行为保持不变。
+
+#### 验证结果
+
+- 6 个 V0.5 测试覆盖 Schema、成功执行、非零退出、参数错误、超时和 Agent 失败恢复；
+- 仓库全部 23 个测试通过；
+- 真实 DeepSeek 使用三次 LLM 调用完成“失败命令 → 成功命令 → 最终回答”；
+- 第一条命令退出码为 7，stderr 为 `expected failure`，Agent Loop 没有崩溃；
+- 第二轮模型读取失败 JSON 后执行恢复命令，得到退出码 0 和 stdout `recovered`；
+- 第三轮模型消费两个 Observation 后正确报告结果并停止调用工具。
+
+真实轨迹：
+
+```text
+MODEL CALL 1 → shell(failing command)
+TOOL RESULT  → exit_code=7, stderr="expected failure"
+MODEL CALL 2 → shell(recovery command)
+TOOL RESULT  → exit_code=0, stdout="recovered"
+MODEL CALL 3 → final answer
+```
 
 **本次只做**
 
