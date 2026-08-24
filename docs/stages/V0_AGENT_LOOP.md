@@ -7,7 +7,8 @@
 - V0.1：已确认
 - V0.2：已确认
 - V0.3：已确认；可重复运行的 DeepSeek Smoke Test 已补充
-- V0.4：实现与验证完成，等待学习者确认
+- V0.4：已确认
+- V0.5：设计已确认，等待书面设计审阅
 
 ## 1. 阶段目标
 
@@ -335,12 +336,144 @@ MODEL CALL 3 → observe V0 document → final answer
 
 ### V0.5：`shell` 与失败观察
 
+**设计状态：已确认，代码尚未实现**
+
+#### Why
+
+读取文件只能让 Agent 理解代码，不能让它验证代码。测试、构建、静态检查和 Git 状态都需要在真实 Repository 中执行命令，并把执行结果交还模型继续推理。
+
+#### Without It
+
+没有 `shell` 时，模型可以建议“运行测试”，但看不到退出码、stdout 或 stderr。它无法知道测试是否通过，也不能根据失败信息修改下一步。Agent Loop 虽然能够循环，却仍缺少“行动并观察”的关键环境能力。
+
+#### How
+
+在 `tools.py` 中增加 `SHELL_TOOL` Schema 和一个直接可读的 `shell` 函数。工具负责执行命令并把所有可预期结果归一化为 JSON Observation；Agent Loop 只通过普通 `if/elif` 在 `read_file` 与 `shell` 之间分发，不引入 Tool Registry。
+
+#### Tool Schema 与接口
+
+模型只看到一个字符串参数：
+
+```json
+{
+  "name": "shell",
+  "arguments": {
+    "command": "python -m unittest"
+  }
+}
+```
+
+Python 实现采用：
+
+```python
+shell(
+    repository,
+    command,
+    timeout_seconds=10,
+) -> str
+```
+
+`timeout_seconds` 是 Harness 内部参数，不暴露在 Tool Schema 中，因此模型不能延长超时。测试可以传入更短的值，避免真的等待 10 秒。
+
+#### 命令执行
+
+最小版本使用标准库：
+
+```python
+subprocess.run(
+    command,
+    cwd=repository,
+    shell=True,
+    capture_output=True,
+    text=True,
+    timeout=timeout_seconds,
+    check=False,
+)
+```
+
+- `cwd=repository` 将命令工作目录固定为用户指定的 Repository；
+- 字符串命令支持管道、重定向和组合命令；
+- `check=False` 让非零退出成为数据，而不是 Python 异常；
+- 默认 10 秒超时由 Harness 控制。
+
+#### Observation 格式
+
+所有正常、非零退出、参数错误和超时结果都返回同样四个字段的 JSON 字符串：
+
+```json
+{
+  "exit_code": 1,
+  "stdout": "",
+  "stderr": "test failed",
+  "timed_out": false
+}
+```
+
+具体语义：
+
+- 成功：`exit_code` 为 `0`；
+- 命令失败：保留真实非零退出码；
+- 超时：`exit_code` 为 `null`、`timed_out` 为 `true`，并保留已经捕获的输出；
+- `command` 缺失、不是字符串或去除空白后为空：`exit_code` 为 `null`，错误原因写入 `stderr`；
+- 使用 `json.dumps(..., ensure_ascii=False)`，确保中文输出保持可读。
+
+可解析的参数错误由工具转换为 Observation。无法解析的 Tool Call JSON 仍是消息协议错误，不在本阶段吞掉。
+
+#### Agent Loop 集成
+
+每次模型调用都同时提供两个 Schema：
+
+```text
+[READ_FILE_TOOL, SHELL_TOOL]
+```
+
+Harness 使用最小分支：
+
+```text
+read_file → read_file(repository, path)
+shell     → shell(repository, command)
+其他工具  → ValueError
+```
+
+Shell 的非零退出和超时结果不会结束 Agent Loop。Harness 使用原始 `tool_call_id` 把 JSON Observation 追加到 `messages`，下一轮模型可以读取 stderr、修正命令或解释失败。
+
+#### 错误分类
+
+- 命令返回非零退出码：工具执行结果，回填模型；
+- 命令超时：工具执行结果，回填模型；
+- `command` 参数无效：工具参数错误，回填模型；
+- 未知工具名或无法解析 Tool Call JSON：Harness/协议错误，抛出异常；
+- Repository 路径本身无效：Harness 初始化错误，不伪装成 Shell 命令失败。
+
+这个区分让模型能够从环境失败中恢复，同时不掩盖 Harness 自身的编程错误。
+
+#### 安全边界
+
+V0.5 的 `shell` 使用宿主机环境执行字符串命令，没有 Sandbox、Permission、命令白名单、网络隔离或环境变量隔离。实验只运行受控 Repository 中的安全命令。完整安全执行环境留到 V6。
+
+本阶段也不实现输出截断或 Context Budget；超大命令输出的 Context 风险留到 V2/V4。标准库超时只提供最小等待上限，不承诺完整清理命令产生的所有子进程。
+
+#### 方案权衡
+
+让 `shell` 直接返回 JSON 字符串，会把执行和结果归一化放在同一个函数中，但能让 Agent Loop 保持只负责消息与分发。返回 `CompletedProcess` 再由 Agent 格式化会泄漏 subprocess 细节；引入 `ToolResult`、异常层和 Tool Registry 则超出 V0.5 的学习范围。
+
+#### TDD 验收案例
+
+- `SHELL_TOOL` 正确描述必填字符串参数 `command`；
+- 命令在指定 Repository 中运行并捕获 stdout；
+- stderr 和非零退出码被写入 JSON，而不是抛出异常；
+- 超时返回 `timed_out=true`；
+- 空白命令和错误类型返回参数错误 Observation；
+- Agent Loop 同时向模型提供 `read_file` 与 `shell`；
+- 假模型先收到失败 Shell Observation，再发出新动作并最终回答；
+- V0.4 的 `read_file` 多轮行为保持不变。
+
 **本次只做**
 
 - 加入最小 `shell` 工具；
 - 固定在用户指定仓库中执行；
 - 返回退出码、标准输出和标准错误；
-- 设置固定超时；
+- 设置由 Harness 控制、模型不可修改的默认 10 秒超时；
 - 将非零退出、超时和工具参数错误作为 observation 回填模型。
 
 **学习重点**
