@@ -7,7 +7,7 @@
 - V0.1：已确认
 - V0.2：已确认
 - V0.3：已确认；可重复运行的 DeepSeek Smoke Test 已补充
-- V0.4：设计已确认，等待书面设计审阅
+- V0.4：实现与验证完成，等待学习者确认
 
 ## 1. 阶段目标
 
@@ -200,7 +200,7 @@ PYTHONPATH=src .venv/bin/python examples/v0_3_deepseek_smoke.py
 
 ### V0.4：最小 `while` Agent Loop
 
-**设计状态：已确认，代码尚未实现**
+**实现状态：完成，等待学习确认**
 
 #### Why
 
@@ -295,6 +295,22 @@ messages[5]  assistant: final answer
 - 每一轮请求都显式使用 `tool_choice="auto"`；
 - 同一轮多个 Tool Call：所有结果都按正确 ID 回填；
 - 模型持续请求工具：达到最大 LLM 调用次数后抛出 `RuntimeError`。
+
+#### 验证结果
+
+- 5 个 V0.4 测试覆盖直接结束、连续读取、同轮多调用、最大轮数和未知工具；
+- 仓库全部 17 个测试通过；
+- 真实 DeepSeek 使用 `tool_choice="auto"` 完成三次 LLM 调用；
+- 第一轮请求 `README.md`，第二轮看到结果后请求 `docs/stages/V0_AGENT_LOOP.md`；
+- 第三轮消费两个 Tool Result 后返回最终答案，没有继续请求工具。
+
+真实轨迹：
+
+```text
+MODEL CALL 1 → read_file(README.md)
+MODEL CALL 2 → observe README → read_file(docs/stages/V0_AGENT_LOOP.md)
+MODEL CALL 3 → observe V0 document → final answer
+```
 
 **本次只做**
 
