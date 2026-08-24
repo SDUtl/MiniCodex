@@ -6,7 +6,7 @@ Mini Codex 是一个以学习 Harness Engineering 为第一目标的 Coding Agen
 
 ## 当前阶段
 
-当前处于 **V0：最小 Agent Loop**。V0.1、V0.2、V0.3 已确认；V0.3 的真实 DeepSeek Smoke Test 已保存为可重复运行的脚本。V0.4 尚未开始。
+当前处于 **V0：最小 Agent Loop**。V0.1、V0.2、V0.3 已确认；V0.4 的最小 Agent Loop 设计已确认，代码尚未开始实现。
 
 - [长期项目章程](docs/PROJECT_CHARTER.md)
 - [V0 设计与学习检查点](docs/stages/V0_AGENT_LOOP.md)

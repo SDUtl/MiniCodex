@@ -7,7 +7,7 @@
 - V0.1：已确认
 - V0.2：已确认
 - V0.3：已确认；可重复运行的 DeepSeek Smoke Test 已补充
-- V0.4：尚未开始
+- V0.4：设计已确认，等待书面设计审阅
 
 ## 1. 阶段目标
 
@@ -200,12 +200,108 @@ PYTHONPATH=src .venv/bin/python examples/v0_3_deepseek_smoke.py
 
 ### V0.4：最小 `while` Agent Loop
 
+**设计状态：已确认，代码尚未实现**
+
+#### Why
+
+真实任务需要的工具调用次数无法预先确定。模型可能直接回答，也可能读取一个文件后继续读取另一个文件。Harness 因此不能把流程写死为“两次模型调用”，而要根据每轮响应决定继续还是结束。
+
+#### Without It
+
+V0.3 在第一次请求中强制调用工具，在第二次请求中禁止调用工具。如果第二次推理发现还需要读取其他文件，模型也无法继续请求工具。固定往返只能演示 Tool Calling 协议，不能形成可持续运行的 Agent Loop。
+
+#### How
+
+新增独立的 `run_agent_loop`，同时保留 V0.3 的 `run_read_file_round_trip` 作为对照。循环中的每一轮都显式使用 `tool_choice="auto"`：模型可以请求工具，也可以返回最终文本。
+
+```text
+messages = [user task]
+iteration = 0
+
+while iteration < max_iterations:
+    调用 LLM
+    iteration += 1
+    追加 assistant message
+
+    if 没有 tool calls:
+        返回 assistant content
+
+    for 当前回复中的每个 tool call:
+        校验工具名
+        解析 arguments
+        执行 read_file
+        追加对应的 tool result
+
+raise RuntimeError
+```
+
+#### 接口与职责
+
+新函数采用以下最小接口：
+
+```python
+run_agent_loop(
+    task,
+    repository,
+    *,
+    model,
+    client,
+    max_iterations=5,
+) -> str
+```
+
+- `task` 生成第一条 user message；
+- `repository` 限制 `read_file` 的读取范围；
+- `client` 执行模型调用，测试时可以注入 Fake Client；
+- `max_iterations` 统计 LLM 调用次数，而不是工具调用次数；
+- 返回值是第一条不含 Tool Call 的 assistant message 内容。
+
+本阶段不提取 Tool Registry、工具分发器类或独立 State 对象。`messages` 列表仍是 V0 唯一的最小运行状态。
+
+#### 消息与状态变化
+
+一次“读取两个文件再回答”的轨迹应为：
+
+```text
+messages[0]  user task
+messages[1]  assistant: read_file(A)
+messages[2]  tool: A 的内容
+messages[3]  assistant: read_file(B)
+messages[4]  tool: B 的内容
+messages[5]  assistant: final answer
+```
+
+每轮调用都会发送当时完整的 `messages`。模型没有内部记忆；它能理解前序 Tool Result，是因为 Harness 在下一轮重新发送了这些消息。
+
+如果模型在同一条 assistant message 中返回多个 Tool Call，Harness 会依次执行并回填全部结果，然后才开始下一轮模型调用。每个结果必须使用各自原始的 `tool_call_id`。
+
+#### 终止与错误
+
+只有两种循环终止路径：
+
+1. 模型返回不含 Tool Call 的消息：正常结束并返回文本；
+2. 已完成 `max_iterations` 次 LLM 调用但模型仍请求工具：抛出 `RuntimeError`。
+
+达到上限时不返回模型文本，因为 Harness 的强制停止不是模型完成任务。未知工具名仍抛出 `ValueError`；文件不存在等 `read_file` 结果仍作为普通 Observation 回填。更完整的工具失败恢复留到 V0.5。
+
+#### 方案权衡
+
+采用“新增循环函数、保留 V0.3 函数”，可以直接比较固定往返与 Agent Loop，代价是暂时存在少量重复代码。直接改写旧函数会失去 V0.3 实验基线；提前抽取公共层虽然减少重复，却会遮住本阶段最需要观察的循环和消息变化。
+
+#### TDD 验收案例
+
+- 模型首轮没有 Tool Call：只调用一次模型并直接返回；
+- 模型连续两轮请求 `read_file`：第三轮基于两个结果回答；
+- 每一轮请求都显式使用 `tool_choice="auto"`；
+- 同一轮多个 Tool Call：所有结果都按正确 ID 回填；
+- 模型持续请求工具：达到最大 LLM 调用次数后抛出 `RuntimeError`。
+
 **本次只做**
 
 - 将 V0.3 的两次固定调用推广为循环；
 - 支持连续多次 `read_file`；
 - 无 tool call 时结束；
-- 加入固定的最大迭代次数。
+- 加入默认值为 5 的最大迭代次数参数。
 
 **学习重点**
 
