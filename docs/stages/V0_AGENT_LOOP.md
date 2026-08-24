@@ -5,8 +5,9 @@
 - 总方向：已确认
 - V0.0：已确认
 - V0.1：已确认
-- V0.2：实现与验证完成，等待学习者确认
-- V0.3：尚未开始
+- V0.2：已确认
+- V0.3：实现与验证完成，等待学习者确认
+- V0.4：尚未开始
 
 ## 1. 阶段目标
 
@@ -149,6 +150,19 @@ tools.py  定义并执行 V0 的两个工具
 直接运行工具测试并解释输入、输出和错误后停止。
 
 ### V0.3：单次 Tool Calling 往返——先不用循环
+
+**实现状态：完成，等待学习确认**
+
+验证结果：
+
+- 第一次请求同时发送用户任务和 `READ_FILE_TOOL` Schema；
+- 模型返回 `read_file` 的 Tool Call 后，Harness 解析名称和 JSON 参数；
+- Harness 通过一个普通 `if` 分发并执行 Python `read_file`；
+- 消息历史按 user → assistant tool call → tool result 的顺序构造；
+- Tool Result 使用原始 `tool_call_id`，第二次请求能基于文件内容回答；
+- 故意使用错误 `tool_call_id` 时，DeepSeek 返回 HTTP 400；
+- 为支持确定性的 `required` / `none` 实验，本阶段显式关闭 DeepSeek Thinking Mode；
+- 当前流程固定调用两次模型，没有 `while` 循环。
 
 **本次只做**
 
