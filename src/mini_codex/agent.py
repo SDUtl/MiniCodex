@@ -19,6 +19,7 @@ def run_read_file_round_trip(
     assistant_message = first_response.choices[0].message
     messages.append(assistant_message)
 
+    #  真正调用工具
     tool_call = assistant_message.tool_calls[0]
     if tool_call.function.name != "read_file":
         raise ValueError(f"Unsupported tool: {tool_call.function.name}")
