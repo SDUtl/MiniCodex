@@ -8,7 +8,8 @@
 - V0.2：已确认
 - V0.3：已确认；可重复运行的 DeepSeek Smoke Test 已补充
 - V0.4：已确认
-- V0.5：实现与验证完成，等待学习者确认
+- V0.5：已确认
+- V0.6：设计已确认，等待实现
 
 ## 1. 阶段目标
 
@@ -201,7 +202,7 @@ PYTHONPATH=src .venv/bin/python examples/v0_3_deepseek_smoke.py
 
 ### V0.4：最小 `while` Agent Loop
 
-**实现状态：完成，等待学习确认**
+**实现状态：已确认**
 
 #### Why
 
@@ -336,7 +337,7 @@ MODEL CALL 3 → observe V0 document → final answer
 
 ### V0.5：`shell` 与失败观察
 
-**实现状态：完成，等待学习确认**
+**实现状态：已确认**
 
 #### Why
 
@@ -510,6 +511,141 @@ MODEL CALL 3 → final answer
 分别展示成功、非零退出和超时轨迹后停止。
 
 ### V0.6：CLI、端到端实验与 V0 总复盘
+
+**实现状态：设计已确认，等待实现**
+
+#### Why
+
+目前的 Agent Loop 只能由 Python 代码直接调用。CLI 提供 V0 的用户边界，把 Repository 路径、用户任务和模型配置组装成一次完整运行，使 V0.1 至 V0.5 的能力可以通过最终约定的命令启动。
+
+#### Without It
+
+如果没有 CLI，每次实验都要手动编写 Python 脚本、创建 Client 并调用 `run_agent_loop`。Agent Loop 虽然存在，却还不能通过下面的稳定入口使用：
+
+```bash
+mini-codex <repository> "<task>"
+```
+
+#### How
+
+新增一个很薄的 `src/mini_codex/cli.py`，并在 `pyproject.toml` 中注册 Console Script：
+
+```text
+用户执行 mini-codex
+        ↓
+pyproject.toml 找到 mini_codex.cli:main
+        ↓
+argparse 解析 repository 和 task
+        ↓
+校验 Repository、任务和 API Key
+        ↓
+从环境变量读取 DeepSeek 配置
+        ↓
+OpenAI(...) 创建兼容 DeepSeek API 的 Client
+        ↓
+run_agent_loop(task, repository, ...)
+        ↓
+打印模型最终回复
+```
+
+CLI 只负责输入、配置和组装；`agent.py` 继续负责消息历史与循环，`tools.py` 继续负责真实环境操作，`llm.py` 保留 V0.1 的单次调用基线。本阶段不增加 `config.py`、Client Factory 或 Provider 抽象。
+
+#### CLI 契约与配置
+
+命令只包含两个位置参数：
+
+```bash
+mini-codex <repository> "<task>"
+```
+
+- `repository` 会转换为绝对路径，并且必须是一个存在的目录；
+- `task` 去除空白后必须非空；
+- CLI 不要求 Repository 必须包含 `.git`，因为 V0 工具真正需要的是有效工作目录；
+- `max_iterations` 不暴露为命令行参数，继续使用 Agent Loop 的默认值 `5`。
+
+模型配置只从当前进程继承的环境变量读取：
+
+```text
+DEEPSEEK_API_KEY     必填
+DEEPSEEK_BASE_URL    可选，默认 https://api.deepseek.com
+MINI_CODEX_MODEL     可选，默认 deepseek-v4-flash
+```
+
+CLI 不主动查找或加载 `.env`，因此不增加 `python-dotenv`。本地实验仍由 Shell 通过 `source .env` 导出变量，Mini Codex 只消费环境配置。
+
+#### 错误处理
+
+缺少位置参数、Repository 无效、任务为空或缺少 `DEEPSEEK_API_KEY` 时，CLI 会在创建 Client 和调用模型之前失败，并输出明确错误。
+
+Agent Loop 中的未知工具、无效 Tool Call JSON、模型 API 异常和最大轮数异常不会被伪装成 Tool Result。它们仍作为 Harness 或协议错误向上抛出。Shell 非零退出、超时和工具参数错误则保持现有语义，作为模型可见的 Observation 回填。
+
+#### 确定性端到端测试
+
+新增 `tests/test_cli.py`，使用临时 Repository 和 Fake Client 驱动完整轨迹：
+
+```text
+CLI repository + task
+        ↓
+Fake Model 请求 read_file
+        ↓
+Harness 读取临时文件
+        ↓
+Fake Model 请求 shell
+        ↓
+Harness 在临时 Repository 执行安全命令
+        ↓
+Fake Model 返回最终回复
+        ↓
+CLI 打印最终回复
+```
+
+测试只替换网络边界上的 Client。`cli.py`、`run_agent_loop`、`read_file` 和 `shell` 都执行真实代码。测试需要证明：
+
+- 两个位置参数被正确解析；
+- 环境变量正确进入 Client 和 Agent Loop；
+- `read_file` 返回临时文件的真实内容；
+- `shell` 在临时 Repository 中运行并返回 JSON Observation；
+- Tool Result 使用原始 `tool_call_id`；
+- 后续模型请求包含完整消息历史；
+- 最终回复写入标准输出；
+- Repository 无效或密钥缺失时不会调用模型。
+
+#### 真实 DeepSeek 实验
+
+安装 Console Script、由 Shell 加载 `.env` 后，直接在 Mini Codex Repository 中执行：
+
+```bash
+.venv/bin/pip install -e .
+source .venv/bin/activate
+
+set -a
+source .env
+set +a
+
+mini-codex . \
+  "先读取 pyproject.toml，然后运行 PYTHONPATH=src python -m unittest -v，最后根据文件内容和测试结果总结项目状态。"
+```
+
+实验使用真实 DeepSeek API 和真实 Repository，验证模型能够连续选择 `read_file`、`shell`，消费 Observation 并最终停止。V0.6 不为了显示轨迹而引入正式 Tracing；完整消息协议由确定性测试检查，真实实验负责证明外部 API 与环境链路可以接通。
+
+#### Failure case
+
+移除 `DEEPSEEK_API_KEY` 后运行 CLI，Harness 应在第一次模型调用前失败。这个对照说明 API 配置错误属于 Harness 初始化错误，不应该被追加成 `role="tool"` 的 Observation。
+
+#### 方案权衡与边界
+
+采用 `cli.py` 加 Console Script 可以准确提供目标命令，又不会把 CLI、配置和 Agent Loop 混在一起。只提供 `python -m mini_codex` 会偏离目标命令；提前加入配置层、多供应商 Client Factory 或更多 CLI 选项，则会隐藏 V0 最需要观察的数据流。
+
+V0.6 仍不实现文件编辑、代码搜索、Git Diff、`.env` 自动加载、正式 Tracing、Sandbox、Permission、API 重试或会话持久化。模型不再请求工具，只表示 Agent Loop 达到当前正常终止条件，不代表任务已经被严格验证完成。
+
+#### TDD 验收案例
+
+- 缺少 `DEEPSEEK_API_KEY`：在创建 Client 前退出；
+- Repository 不存在或不是目录：在模型调用前退出；
+- 完整轨迹：Fake Model 依次请求 `read_file`、`shell`，然后返回最终文本；
+- CLI 输出：只把最终回复写入标准输出；
+- 安装入口：Editable Install 后 `mini-codex --help` 可运行；
+- 真实实验：DeepSeek 在 Mini Codex Repository 中完成只读分析和测试命令。
 
 **本次只做**
 
