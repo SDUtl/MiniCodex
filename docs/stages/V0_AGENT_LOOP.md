@@ -9,7 +9,7 @@
 - V0.3：已确认；可重复运行的 DeepSeek Smoke Test 已补充
 - V0.4：已确认
 - V0.5：已确认
-- V0.6：设计已确认，等待实现
+- V0.6：V0.6a 已实现并验证，等待学习确认
 
 ## 1. 阶段目标
 
@@ -512,7 +512,7 @@ MODEL CALL 3 → final answer
 
 ### V0.6：CLI、端到端实验与 V0 总复盘
 
-**实现状态：设计已确认，等待实现**
+**实现状态：V0.6a 已实现并验证，等待学习确认**
 
 #### Why
 
@@ -646,6 +646,43 @@ V0.6 仍不实现文件编辑、代码搜索、Git Diff、`.env` 自动加载、
 - CLI 输出：只把最终回复写入标准输出；
 - 安装入口：Editable Install 后 `mini-codex --help` 可运行；
 - 真实实验：DeepSeek 在 Mini Codex Repository 中完成只读分析和测试命令。
+
+#### V0.6a 验证结果
+
+V0.6a 只实现 CLI 的正常运行路径，尚未加入友好输入校验或 Console Script 注册。
+
+第一轮 RED/GREEN：
+
+- RED：端到端测试因 `mini_codex.cli` 不存在而失败；
+- GREEN：新增最薄的 `cli.py`，解析 Repository 和 Task、读取环境配置、创建 Client、调用 `run_agent_loop` 并打印最终回复；
+- 测试中的 Fake Client 只替换网络调用，`run_agent_loop`、`read_file` 和 `shell("pwd")` 都执行真实代码。
+
+第二轮 RED/GREEN：
+
+- RED：自定义 `DEEPSEEK_BASE_URL` 和 `MINI_CODEX_MODEL` 被忽略，测试观察到 Client 仍使用默认地址；
+- GREEN：环境变量存在时使用配置值，不存在时分别回退到 `https://api.deepseek.com` 和 `deepseek-v4-flash`。
+
+端到端测试观察到的完整数据流是：
+
+```text
+CLI 参数
+  ↓
+user task
+  ↓
+assistant: read_file(project.txt)
+  ↓
+tool: "Mini Codex CLI"
+  ↓
+assistant: shell("pwd")
+  ↓
+tool: exit_code=0 + Repository 绝对路径
+  ↓
+assistant: final answer
+  ↓
+CLI stdout
+```
+
+验证结果：V0.6a 的 2 个 CLI 测试通过，仓库全部 25 个测试通过。V0.6b 才会处理缺少密钥、无效 Repository 和空任务；V0.6c 才会注册并运行真正的 `mini-codex` 命令。
 
 **本次只做**
 
