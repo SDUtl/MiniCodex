@@ -14,8 +14,19 @@ def main(argv=None) -> None:
     arguments = parser.parse_args(argv)
 
     repository = Path(arguments.repository).resolve()
+    if not repository.is_dir():
+        parser.error(
+            f"repository must be an existing directory: {repository}"
+        )
+    if not arguments.task.strip():
+        parser.error("task must be non-empty")
+
+    api_key = os.getenv("DEEPSEEK_API_KEY")
+    if not api_key:
+        parser.error("DEEPSEEK_API_KEY is required")
+
     client = OpenAI(
-        api_key=os.environ["DEEPSEEK_API_KEY"],
+        api_key=api_key,
         base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
     )
     answer = run_agent_loop(

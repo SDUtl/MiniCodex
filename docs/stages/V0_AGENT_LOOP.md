@@ -9,7 +9,7 @@
 - V0.3：已确认；可重复运行的 DeepSeek Smoke Test 已补充
 - V0.4：已确认
 - V0.5：已确认
-- V0.6：V0.6a 已实现并验证，等待学习确认
+- V0.6：V0.6b 已实现并验证，等待学习确认
 
 ## 1. 阶段目标
 
@@ -512,7 +512,7 @@ MODEL CALL 3 → final answer
 
 ### V0.6：CLI、端到端实验与 V0 总复盘
 
-**实现状态：V0.6a 已实现并验证，等待学习确认**
+**实现状态：V0.6b 已实现并验证，等待学习确认**
 
 #### Why
 
@@ -683,6 +683,34 @@ CLI stdout
 ```
 
 验证结果：V0.6a 的 2 个 CLI 测试通过，仓库全部 25 个测试通过。V0.6b 才会处理缺少密钥、无效 Repository 和空任务；V0.6c 才会注册并运行真正的 `mini-codex` 命令。
+
+#### V0.6b 验证结果
+
+V0.6b 将三个 Harness 启动错误统一为 `argparse` CLI 错误：
+
+```text
+解析 repository 和 task
+        ↓
+Repository 是有效目录？ ──否──→ stderr + exit code 2
+        ↓ 是
+Task 去除空白后非空？ ──否──→ stderr + exit code 2
+        ↓ 是
+DEEPSEEK_API_KEY 存在？ ──否──→ stderr + exit code 2
+        ↓ 是
+创建 OpenAI Client
+        ↓
+进入 Agent Loop
+```
+
+三轮 RED/GREEN 分别观察到：
+
+- 缺少密钥：RED 暴露裸 `KeyError('DEEPSEEK_API_KEY')`；GREEN 改为 `DEEPSEEK_API_KEY is required`；
+- 无效 Repository：RED 证明 CLI 已经尝试创建 Client；GREEN 在路径解析后使用 `is_dir()` 拦截；
+- 空白 Task：RED 证明空任务仍会创建 Client；GREEN 使用 `task.strip()` 判断非空，但继续把原始 Task 文本传入 Agent Loop。
+
+每个测试都验证退出码为 `2`、错误原因写入 stderr，并且 `OpenAI(...)` 从未调用。这些错误不会进入 `messages`，也不会生成 `role="tool"` 的 Observation，因为 Agent Loop 尚未启动。
+
+验证结果：V0.6b 新增 3 个启动校验测试，5 个 CLI 测试全部通过，仓库全部 28 个测试通过。V0.6c 才会注册 Console Script 并运行真实 DeepSeek 实验。
 
 **本次只做**
 

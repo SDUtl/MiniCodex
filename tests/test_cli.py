@@ -3,7 +3,7 @@ import json
 import os
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -134,6 +134,82 @@ class CliEndToEndTests(unittest.TestCase):
             client.chat.completions.requests[0]["model"],
             "test-deepseek-model",
         )
+
+
+class CliValidationTests(unittest.TestCase):
+    def test_rejects_missing_api_key_before_creating_client(self):
+        from mini_codex import cli
+
+        with tempfile.TemporaryDirectory() as directory:
+            error_output = io.StringIO()
+            with (
+                patch.dict(os.environ, {}, clear=True),
+                patch.object(cli, "OpenAI") as openai_class,
+                redirect_stderr(error_output),
+                self.assertRaises(BaseException) as raised,
+            ):
+                cli.main([directory, "Inspect the repository"])
+
+        self.assertIsInstance(raised.exception, SystemExit)
+        self.assertEqual(raised.exception.code, 2)
+        self.assertIn("DEEPSEEK_API_KEY is required", error_output.getvalue())
+        openai_class.assert_not_called()
+
+    def test_rejects_invalid_repository_before_creating_client(self):
+        from mini_codex import cli
+
+        with tempfile.TemporaryDirectory() as directory:
+            missing_repository = Path(directory) / "missing"
+            error_output = io.StringIO()
+            with (
+                patch.dict(
+                    os.environ,
+                    {"DEEPSEEK_API_KEY": "test-key"},
+                    clear=True,
+                ),
+                patch.object(
+                    cli,
+                    "OpenAI",
+                    side_effect=AssertionError("OpenAI should not be created"),
+                ) as openai_class,
+                redirect_stderr(error_output),
+                self.assertRaises(BaseException) as raised,
+            ):
+                cli.main([str(missing_repository), "Inspect the repository"])
+
+        self.assertIsInstance(raised.exception, SystemExit)
+        self.assertEqual(raised.exception.code, 2)
+        self.assertIn(
+            "repository must be an existing directory",
+            error_output.getvalue(),
+        )
+        openai_class.assert_not_called()
+
+    def test_rejects_blank_task_before_creating_client(self):
+        from mini_codex import cli
+
+        with tempfile.TemporaryDirectory() as directory:
+            error_output = io.StringIO()
+            with (
+                patch.dict(
+                    os.environ,
+                    {"DEEPSEEK_API_KEY": "test-key"},
+                    clear=True,
+                ),
+                patch.object(
+                    cli,
+                    "OpenAI",
+                    side_effect=AssertionError("OpenAI should not be created"),
+                ) as openai_class,
+                redirect_stderr(error_output),
+                self.assertRaises(BaseException) as raised,
+            ):
+                cli.main([directory, "   "])
+
+        self.assertIsInstance(raised.exception, SystemExit)
+        self.assertEqual(raised.exception.code, 2)
+        self.assertIn("task must be non-empty", error_output.getvalue())
+        openai_class.assert_not_called()
 
 
 if __name__ == "__main__":
