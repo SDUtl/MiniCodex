@@ -9,7 +9,7 @@
 - V0.3：已确认；可重复运行的 DeepSeek Smoke Test 已补充
 - V0.4：已确认
 - V0.5：已确认
-- V0.6：V0.6b 已实现并验证，等待学习确认
+- V0.6：实现与技术验收完成，等待 V0 总学习复盘确认
 
 ## 1. 阶段目标
 
@@ -512,7 +512,7 @@ MODEL CALL 3 → final answer
 
 ### V0.6：CLI、端到端实验与 V0 总复盘
 
-**实现状态：V0.6b 已实现并验证，等待学习确认**
+**实现状态：实现与技术验收完成，等待 V0 总学习复盘确认**
 
 #### Why
 
@@ -712,12 +712,60 @@ DEEPSEEK_API_KEY 存在？ ──否──→ stderr + exit code 2
 
 验证结果：V0.6b 新增 3 个启动校验测试，5 个 CLI 测试全部通过，仓库全部 28 个测试通过。V0.6c 才会注册 Console Script 并运行真实 DeepSeek 实验。
 
+#### V0.6c 验证结果
+
+在 `pyproject.toml` 中注册：
+
+```toml
+[project.scripts]
+mini-codex = "mini_codex.cli:main"
+```
+
+安装后，Shell 中的 `mini-codex` 命令会调用 `mini_codex.cli:main`。这里的 Console Script 只负责把命令名映射到现有 Python 函数，不新增 Agent 行为。
+
+打包入口的 RED/GREEN 过程：
+
+- RED：`.venv/bin/mini-codex --help` 返回退出码 `127`，因为命令不存在；
+- 第一次 GREEN 尝试：项目虚拟环境中的 pip 21.2.4 不支持仅基于 `pyproject.toml` 的 Editable Install，命令仍未生成；
+- 环境恢复：只升级项目 `.venv` 内的 pip，不修改系统 Python；
+- GREEN：`pip install -e .` 成功，`mini-codex --help` 返回退出码 `0`，显示 `repository` 和 `task` 两个位置参数。
+
+Editable Install 生成的 `*.egg-info/` 是可再生打包元数据，已加入 `.gitignore`，不会作为项目源码提交。
+
+真实 DeepSeek Smoke Test 首次启动时，V0.6b 检测到当前 `.env` 使用旧变量名 `OPENAI_API_KEY`，而 CLI 契约要求 `DEEPSEEK_API_KEY`，因此在模型调用前以退出码 `2` 停止。实验没有修改或复制密钥文件，只在单次子进程中临时映射变量名后重试。
+
+真实 CLI 随后完成任务并输出：
+
+```text
+项目名：mini-codex
+Python 版本要求：>=3.9
+测试数量：28
+测试结果：全部通过（Ran 28 tests ... OK）
+```
+
+进程退出码为 `0`。这次实验直接证明安装后的 CLI、真实 DeepSeek API 和最终回复链路已经接通，最终文本也与 Repository 文件及测试结果一致。由于 V0.6 CLI 没有正式 Tracing，这次输出本身不逐条记录真实 Tool Call；精确的 `read_file → shell → final` 消息流由 Fake Client 端到端测试检查，真实工具调用则已在此前可观察的 DeepSeek Smoke Test 中验证。自动化测试再次运行，仓库全部 28 个测试通过。
+
+#### V0 技术验收
+
+V0 Definition of Done 的功能和测试部分已经满足：
+
+- CLI 接收 Repository 和 Task；
+- 真实模型可以请求 `read_file` 与 `shell`；
+- Harness 能关联 Tool Call 与 Tool Result，并把 Observation 回填下一轮；
+- 普通结束、工具失败、最大轮数和初始化错误都有明确路径；
+- Shell 固定在目标 Repository 中运行，并有 10 秒超时；
+- Fake Client 覆盖完整 `read_file → shell → final` 轨迹；
+- 28 个确定性测试全部通过；
+- 真实 DeepSeek CLI Smoke Test 通过。
+
+技术验收完成不等于学习验收完成。进入 V1 前仍需完成 V0 总复盘，并由学习者明确确认已经能够解释核心消息流和职责边界。
+
 **本次只做**
 
 - 提供 `mini-codex <repository> <task>` 入口；
 - 串联此前已经确认的能力；
 - 完成确定性端到端测试；
-- 在受控 Demo Repository 中完成一次真实模型实验；
+- 在 Mini Codex Repository 自身完成一次真实模型实验；
 - 对照 V0 Definition of Done 进行验收。
 
 **学习重点**

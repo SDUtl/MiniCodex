@@ -11,5 +11,8 @@ dependencies = [
     "openai",
 ]
 
+[project.scripts]
+mini-codex = "mini_codex.cli:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]

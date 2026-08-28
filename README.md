@@ -6,7 +6,7 @@ Mini Codex 是一个以学习 Harness Engineering 为第一目标的 Coding Agen
 
 ## 当前阶段
 
-当前处于 **V0：最小 Agent Loop**。V0.1 至 V0.5 已确认；V0.6b 的 CLI 启动错误边界已经实现并验证，正在等待学习确认。
+当前处于 **V0：最小 Agent Loop**。V0.1 至 V0.5 已确认；V0.6 的实现与技术验收已经完成，正在等待 V0 总学习复盘确认。
 
 - [长期项目章程](docs/PROJECT_CHARTER.md)
 - [V0 设计与学习检查点](docs/stages/V0_AGENT_LOOP.md)
@@ -16,6 +16,29 @@ Mini Codex 是一个以学习 Harness Engineering 为第一目标的 Coding Agen
 ```text
 学习价值 > 开发速度 > 功能数量
 ```
+
+## V0 CLI
+
+项目使用基于 `pyproject.toml` 的 Editable Install。先确保虚拟环境中的 pip 支持该安装方式：
+
+```bash
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e .
+```
+
+在本地 `.env` 中配置 `DEEPSEEK_API_KEY` 后，由 Shell 导出环境变量并运行：
+
+```bash
+set -a
+source .env
+set +a
+
+mini-codex . \
+  "先读取 pyproject.toml，然后运行 PYTHONPATH=src python -m unittest -v，最后总结项目状态。"
+```
+
+Mini Codex 不会主动查找或加载 `.env`。
 
 ## V0.3 DeepSeek Smoke Test
 
