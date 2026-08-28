@@ -6,7 +6,7 @@ Mini Codex 是一个以学习 Harness Engineering 为第一目标的 Coding Agen
 
 ## 当前阶段
 
-当前处于 **V0：最小 Agent Loop**。V0.1 至 V0.5 已确认；V0.6 的实现与技术验收已经完成，正在等待 V0 总学习复盘确认。
+**V0：最小 Agent Loop** 已完成技术验收与学习验收。项目现在进入 **V1：Coding Agent Tool Runtime** 的设计阶段，尚未开始实现 V1 工具。
 
 - [长期项目章程](docs/PROJECT_CHARTER.md)
 - [V0 设计与学习检查点](docs/stages/V0_AGENT_LOOP.md)
