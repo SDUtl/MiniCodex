@@ -10,6 +10,7 @@ Mini Codex 是一个以学习 Harness Engineering 为第一目标的 Coding Agen
 
 - [长期项目章程](docs/PROJECT_CHARTER.md)
 - [V0 设计与学习检查点](docs/stages/V0_AGENT_LOOP.md)
+- [V0 学习问题与参考答案](docs/stages/V0_REVIEW_QUESTIONS.md)
 
 ## 核心优先级
 
