@@ -81,6 +81,8 @@ def shell(repository: Path, command: str, timeout_seconds: float = 10) -> str:
             timeout=timeout_seconds,
             check=False,
         )
+        # check = false 把失败信息传给模型
+
     except subprocess.TimeoutExpired as error:
         # TimeoutExpired 的部分输出即使开启 text=True，也可能仍然是 bytes。
         stdout = error.stdout or ""
@@ -89,6 +91,7 @@ def shell(repository: Path, command: str, timeout_seconds: float = 10) -> str:
             stdout = stdout.decode("utf-8", errors="replace")
         if isinstance(stderr, bytes):
             stderr = stderr.decode("utf-8", errors="replace")
+            # 序列化为字符串
         return json.dumps(
             {
                 "exit_code": None,
